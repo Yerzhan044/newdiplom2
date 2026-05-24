@@ -271,6 +271,149 @@ def get_top_patterns(
 
 
 # ═════════════════════════════════════════════════════════════════
+# GRAPH ENDPOINTS (для визуализации взаимодействий)
+# ═════════════════════════════════════════════════════════════════
+
+@router.get("/graph/interactions")
+def get_interaction_graph(
+    limit: int = Query(100, ge=10, le=500),
+    min_transactions: int = Query(1, ge=1, le=10),
+    db: Session = Depends(get_db)
+):
+    """
+    Получить граф взаимодействий между пользователями
+
+    Args:
+        limit: Максимум транзакций для анализа
+        min_transactions: Минимальное кол-во транзакций между двумя пользователями чтобы показать связь
+
+    Returns:
+        {
+            "nodes": [{"id": 1, "label": "Alice", "risk": "high", "transactions": 10}, ...],
+            "edges": [{"from": 1, "to": 2, "weight": 5, "total_amount": 5000, "fraud_count": 2}, ...]
+        }
+    """
+    try:
+        from sqlalchemy import func
+
+        # Получаем последние N транзакций
+        transactions = db.query(Transaction).order_by(
+            Transaction.timestamp.desc()
+        ).limit(limit).all()
+
+        if not transactions:
+            return {"nodes": [], "edges": []}
+
+        # Собираем узлы (пользователи)
+        node_ids = set()
+        node_data = {}
+
+        for txn in transactions:
+            if txn.sender_id not in node_ids:
+                sender = db.query(User).filter(User.id == txn.sender_id).first()
+                if sender:
+                    node_ids.add(txn.sender_id)
+                    node_data[txn.sender_id] = {
+                        "id": txn.sender_id,
+                        "label": sender.name,
+                        "country": sender.country,
+                        "transactions": 0,
+                        "blocked_count": 0
+                    }
+
+            if txn.receiver_id not in node_ids:
+                receiver = db.query(User).filter(User.id == txn.receiver_id).first()
+                if receiver:
+                    node_ids.add(txn.receiver_id)
+                    node_data[txn.receiver_id] = {
+                        "id": txn.receiver_id,
+                        "label": receiver.name,
+                        "country": receiver.country,
+                        "transactions": 0,
+                        "blocked_count": 0
+                    }
+
+        # Подсчитываем статистику по узлам
+        for txn in transactions:
+            if txn.sender_id in node_data:
+                node_data[txn.sender_id]["transactions"] += 1
+                if txn.status.value == "blocked":
+                    node_data[txn.sender_id]["blocked_count"] += 1
+
+            if txn.receiver_id in node_data:
+                node_data[txn.receiver_id]["transactions"] += 1
+                if txn.status.value == "blocked":
+                    node_data[txn.receiver_id]["blocked_count"] += 1
+
+        # Определяем риск для каждого узла
+        for node_id, data in node_data.items():
+            if data["transactions"] > 0:
+                blocked_ratio = data["blocked_count"] / data["transactions"]
+                if blocked_ratio >= 0.3:
+                    data["risk"] = "high"
+                elif blocked_ratio >= 0.15:
+                    data["risk"] = "medium"
+                else:
+                    data["risk"] = "low"
+            else:
+                data["risk"] = "low"
+
+        # Собираем рёбра (транзакции между пользователями)
+        edge_map = {}  # (sender_id, receiver_id) -> {count, amount, fraud_count}
+
+        for txn in transactions:
+            key = (txn.sender_id, txn.receiver_id)
+            if key not in edge_map:
+                edge_map[key] = {
+                    "count": 0,
+                    "total_amount": 0.0,
+                    "fraud_count": 0,
+                    "statuses": {"approved": 0, "review": 0, "blocked": 0}
+                }
+
+            edge_map[key]["count"] += 1
+            edge_map[key]["total_amount"] += txn.amount
+
+            if txn.status.value == "blocked":
+                edge_map[key]["fraud_count"] += 1
+
+            status = txn.status.value.upper()
+            if status in edge_map[key]["statuses"]:
+                edge_map[key]["statuses"][status] += 1
+
+        # Фильтруем рёбра по минимальному количеству транзакций
+        edges = []
+        for (sender_id, receiver_id), data in edge_map.items():
+            if data["count"] >= min_transactions:
+                edges.append({
+                    "from": sender_id,
+                    "to": receiver_id,
+                    "weight": data["count"],
+                    "total_amount": round(data["total_amount"], 2),
+                    "fraud_count": data["fraud_count"],
+                    "statuses": data["statuses"]
+                })
+
+        nodes = list(node_data.values())
+
+        return {
+            "nodes": nodes,
+            "edges": edges,
+            "summary": {
+                "total_nodes": len(nodes),
+                "total_edges": len(edges),
+                "total_transactions": len(transactions)
+            }
+        }
+
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error in get_interaction_graph: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ═════════════════════════════════════════════════════════════════
 # HEALTH CHECK
 # ═════════════════════════════════════════════════════════════════
 

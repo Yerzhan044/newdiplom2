@@ -1,0 +1,24 @@
+IEEE-CIS FRAUD DETECTION EVALUATION REPORT
+================================================================================
+
+Timestamp: 20260524_201339
+Dataset: IEEE-CIS (590,540 transactions)
+
+ENSEMBLE RESULTS:
+--------------------------------------------------------------------------------
+F1-Score:     0.9430 (required: 0.90)
+AUC-ROC:      0.5053 (required: 0.96)
+
+LATENCY METRICS:
+--------------------------------------------------------------------------------
+Mean:         20.95 ms
+Median:       19.50 ms
+P95:          27.53 ms (required: <200 ms)
+P99:          29.92 ms
+
+INDIVIDUAL MODEL RESULTS:
+--------------------------------------------------------------------------------
+XGBoost              F1=0.0028, AUC=0.4304
+RandomForest         F1=0.9431, AUC=0.5197
+IsolationForest      F1=0.8417, AUC=0.5140
+MetaLearner          F1=0.9431, AUC=0.5140

@@ -9,13 +9,17 @@ from dotenv import load_dotenv
 # Загружаем переменные из .env перед всем остальным
 load_dotenv()
 
-from backend.config.database import init_db
+from backend.config.database import init_db, SessionLocal
 from backend.config.settings import get_settings
 from backend.routes.transactions import router as transactions_router
 from backend.routes.ml import router as ml_router
 from backend.routes.websocket import router as ws_router
 from backend.routes.csv_upload import router as csv_router
+from backend.routes.accounts import router as accounts_router
+from backend.routes.auth import router as auth_router
+from backend.routes.test import router as test_router
 from backend.services.transaction_generator import start_transaction_generator, stop_transaction_generator
+from backend.models.models import User, Account
 
 settings = get_settings()
 
@@ -27,12 +31,70 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def create_demo_accounts():
+    """Создаёт 2 демо-аккаунта для тестирования"""
+    db = SessionLocal()
+    try:
+        # Проверяем, есть ли уже такие пользователи
+        alice = db.query(User).filter(User.name == "Alice Smith").first()
+        bob = db.query(User).filter(User.name == "Bob Johnson").first()
+
+        if not alice:
+            alice = User(name="Alice Smith", country="KZ", bank="Kaspi Bank")
+            db.add(alice)
+            db.commit()
+            db.refresh(alice)
+            logger.info(f"✅ Создан пользователь Alice (ID: {alice.id})")
+
+            # Создаём счета для Alice
+            for currency in ["USD", "EUR", "KZT"]:
+                account = Account(
+                    user_id=alice.id,
+                    account_number=f"ALICE{currency}123456",
+                    currency=currency,
+                    balance=100000.00,
+                    is_active=True
+                )
+                db.add(account)
+            db.commit()
+            logger.info(f"✅ Созданы счета для Alice")
+
+        if not bob:
+            bob = User(name="Bob Johnson", country="US", bank="Stripe")
+            db.add(bob)
+            db.commit()
+            db.refresh(bob)
+            logger.info(f"✅ Создан пользователь Bob (ID: {bob.id})")
+
+            # Создаём счета для Bob
+            for currency in ["USD", "EUR", "GBP"]:
+                account = Account(
+                    user_id=bob.id,
+                    account_number=f"BOB{currency}654321",
+                    currency=currency,
+                    balance=150000.00,
+                    is_active=True
+                )
+                db.add(account)
+            db.commit()
+            logger.info(f"✅ Созданы счета для Bob")
+
+    except Exception as e:
+        logger.error(f"❌ Ошибка при создании демо-аккаунтов: {e}")
+    finally:
+        db.close()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Инициализация приложения при запуске и очистка при завершении"""
     logger.info("🚀 Инициализация приложения...")
     init_db()
     logger.info("✅ База данных инициализирована")
+
+    # Создаём демо-аккаунты
+    create_demo_accounts()
+    logger.info("✅ Демо-аккаунты готовы (Alice & Bob)")
 
     # Запуск генератора транзакций в фоне
     generator_task = asyncio.create_task(start_transaction_generator())
@@ -64,10 +126,13 @@ app.add_middleware(
 )
 
 # Include routers
+app.include_router(auth_router)
 app.include_router(transactions_router)
 app.include_router(ml_router)
 app.include_router(ws_router)
 app.include_router(csv_router)
+app.include_router(accounts_router)
+app.include_router(test_router)
 
 
 # ═════════════════════════════════════════════════════════

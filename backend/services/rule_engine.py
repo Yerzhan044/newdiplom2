@@ -367,11 +367,34 @@ class RuleEngine:
         if not patterns:
             return 0.0
 
-        # Суммируем confidence всех паттернов
-        total_confidence = sum(p['confidence'] for p in patterns)
+        # Взвешиваем каждый паттерн по его риску
+        # Высокорисковые паттерны (velocity, impossible_movement) дают бонус
+        weighted_score = 0.0
+        max_weight = 0.0
 
-        # Нормализуем (максимум - это количество паттернов)
-        max_possible = len(patterns)
-        score = min(total_confidence / max_possible, 1.0)
+        high_risk_patterns = {'velocity_attack', 'impossible_movement', 'vpn_location_mismatch'}
+        medium_risk_patterns = {'structuring', 'amount_splitting', 'spending_surge'}
+
+        for pattern in patterns:
+            confidence = pattern['confidence']
+            pattern_name = pattern.get('pattern_name', '')
+
+            if pattern_name in high_risk_patterns:
+                weight = 2.5
+            elif pattern_name in medium_risk_patterns:
+                weight = 1.8
+            else:
+                weight = 1.0
+
+            weighted_score += confidence * weight
+            max_weight += 1.0 * weight
+
+        # Нормализуем через экспоненциальную функцию (чтобы было больше высоких scores)
+        if max_weight > 0:
+            normalized = weighted_score / max_weight
+            # Применяем нелинейную трансформацию для увеличения scores
+            score = min(normalized ** 0.7, 1.0)  # Экспонента 0.7 поднимает средние значения
+        else:
+            score = 0.0
 
         return score

@@ -168,10 +168,13 @@ async def upload_csv(file: UploadFile = File(...), db: Session = Depends(get_db)
                         details={'rule': pattern['rule']}
                     )
 
-                # Определяем статус
-                if final_score < 0.4:
+                # Определяем статус (используем settings)
+                from backend.config.settings import get_settings
+                settings = get_settings()
+
+                if final_score < settings.fraud_threshold_approved:
                     status = 'approved'
-                elif final_score < 0.7:
+                elif final_score < settings.fraud_threshold_review:
                     status = 'review'
                 else:
                     status = 'blocked'

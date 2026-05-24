@@ -1,10 +1,35 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Routes, Route, useNavigate } from 'react-router-dom';
+import { Routes, Route, useNavigate, Navigate } from 'react-router-dom';
+import { useAuth } from './contexts/AuthContext';
 import TransactionFeed from './components/TransactionFeed';
 import StatisticsPanel from './components/StatisticsPanel';
 import TopPatterns from './components/TopPatterns';
+import InteractionGraph from './components/InteractionGraph';
 import CSVUpload from './pages/CSVUpload';
+import ClientApp from './pages/ClientApp';
+import LoginPage from './pages/LoginPage';
 import './App.css';
+
+// Protected Route Component
+function ProtectedRoute({ children }) {
+  const { isAuthenticated, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 text-white flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-2xl font-bold mb-4">⏳ Загрузка...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return children;
+}
 
 function App() {
   const navigate = useNavigate();
@@ -18,6 +43,7 @@ function App() {
   const [topPatterns, setTopPatterns] = useState([]);
   const [isConnected, setIsConnected] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState(null);
+  const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard' или 'graph'
   const wsRef = useRef(null);
 
   useEffect(() => {
@@ -120,6 +146,15 @@ function App() {
 
   return (
     <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route
+        path="/client"
+        element={
+          <ProtectedRoute>
+            <ClientApp />
+          </ProtectedRoute>
+        }
+      />
       <Route path="/csv-upload" element={<CSVUpload />} />
       <Route
         path="/"
@@ -139,6 +174,12 @@ function App() {
                       <span>{isConnected ? 'Live' : 'Offline'}</span>
                     </div>
                     <button
+                      onClick={() => navigate('/client')}
+                      className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg font-bold transition"
+                    >
+                      📱 Клиент
+                    </button>
+                    <button
                       onClick={() => navigate('/csv-upload')}
                       className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg font-bold transition"
                     >
@@ -149,76 +190,188 @@ function App() {
               </div>
             </header>
 
+            {/* Tab Navigation */}
+            <div className="bg-black bg-opacity-50 border-b border-gray-700 sticky top-0 z-40">
+              <div className="max-w-7xl mx-auto px-6">
+                <div className="flex gap-4">
+                  <button
+                    onClick={() => setActiveTab('dashboard')}
+                    className={`px-6 py-4 font-bold transition border-b-2 ${
+                      activeTab === 'dashboard'
+                        ? 'border-blue-500 text-blue-400'
+                        : 'border-transparent text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    📊 Dashboard
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('graph')}
+                    className={`px-6 py-4 font-bold transition border-b-2 ${
+                      activeTab === 'graph'
+                        ? 'border-blue-500 text-blue-400'
+                        : 'border-transparent text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    🌐 Interaction Graph
+                  </button>
+                </div>
+              </div>
+            </div>
+
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-6 py-8">
-        {/* Statistics Grid */}
-        <StatisticsPanel statistics={statistics} />
+      <main className="max-w-full mx-auto px-6 py-8">
+        {activeTab === 'dashboard' ? (
+          <>
+            {/* Dashboard View */}
+            <div className="max-w-7xl mx-auto">
+              {/* Statistics Grid */}
+              <StatisticsPanel statistics={statistics} />
 
-        {/* Two Column Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-8">
-          {/* Transaction Feed (2 columns) */}
-          <div className="lg:col-span-2">
-            <TransactionFeed transactions={transactions} onSelectTransaction={setSelectedTransaction} />
-          </div>
+              {/* Two Column Layout */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-8">
+                {/* Transaction Feed (2 columns) */}
+                <div className="lg:col-span-2">
+                  <TransactionFeed transactions={transactions} onSelectTransaction={setSelectedTransaction} />
+                </div>
 
-          {/* Top Patterns (1 column) */}
-          <div>
-            <TopPatterns patterns={topPatterns} />
-          </div>
-        </div>
+                {/* Top Patterns (1 column) */}
+                <div>
+                  <TopPatterns patterns={topPatterns} />
+                </div>
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Graph View */}
+            <div className="h-screen -mx-6 -my-8">
+              <InteractionGraph apiUrl={process.env.REACT_APP_API_URL || 'http://localhost:8000'} />
+            </div>
+          </>
+        )}
 
-        {/* AI Explanation Modal */}
-        {selectedTransaction && (
-          <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 z-50">
-            <div className="bg-slate-800 rounded-lg p-8 max-w-2xl w-full max-h-96 overflow-y-auto border-2 border-blue-500">
+        {/* AI Explanation Modal - Expanded */}
+        {selectedTransaction && activeTab === 'dashboard' && (
+          <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 z-50 overflow-y-auto">
+            <div className="bg-slate-800 rounded-lg p-8 max-w-4xl w-full border-2 border-blue-500 my-8">
               <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-bold text-white">🤖 AI Explanation</h2>
+                <h2 className="text-3xl font-bold text-white">🔍 Detailed Transaction Analysis</h2>
                 <button
                   onClick={() => setSelectedTransaction(null)}
-                  className="text-gray-400 hover:text-white text-3xl leading-none"
+                  className="text-gray-400 hover:text-white text-4xl leading-none"
                 >
                   ×
                 </button>
               </div>
 
-              <div className="space-y-4">
+              <div className="space-y-5">
+                {/* Transaction Overview */}
                 <div className="bg-slate-700 p-4 rounded border border-slate-600">
-                  <h3 className="text-blue-400 font-bold mb-2">📊 Transaction</h3>
-                  <p className="text-gray-300 text-sm">
-                    {selectedTransaction.sender} → {selectedTransaction.receiver}
-                  </p>
-                  <p className="text-gray-300 text-sm">
-                    <span className="font-semibold">{selectedTransaction.amount}</span> {selectedTransaction.currency}
-                  </p>
+                  <h3 className="text-blue-400 font-bold mb-3">📊 Transaction Overview</h3>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div>
+                      <p className="text-gray-400 text-xs font-bold">FROM</p>
+                      <p className="text-white font-semibold">{selectedTransaction.sender}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-400 text-xs font-bold">TO</p>
+                      <p className="text-white font-semibold">{selectedTransaction.receiver}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-400 text-xs font-bold">AMOUNT</p>
+                      <p className="text-white font-semibold">{selectedTransaction.amount} {selectedTransaction.currency}</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-400 text-xs font-bold">TIME</p>
+                      <p className="text-white font-semibold text-sm">{selectedTransaction.timestamp}</p>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="bg-slate-700 p-4 rounded border border-blue-600">
-                  <h3 className="text-blue-400 font-bold mb-2">💬 AI Analysis</h3>
-                  <p className="text-gray-200 leading-relaxed text-sm">
-                    {selectedTransaction.explanation || 'No explanation available'}
-                  </p>
+                {/* ML Model Scores */}
+                {selectedTransaction.ml_scores && (
+                  <div className="bg-slate-700 p-4 rounded border border-purple-600">
+                    <h3 className="text-purple-400 font-bold mb-3">🤖 ML Model Predictions</h3>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                      {Object.entries(selectedTransaction.ml_scores).map(([model, score]) => (
+                        <div key={model} className="bg-slate-600 p-3 rounded">
+                          <p className="text-gray-400 text-xs font-bold uppercase">{model.replace('_', ' ')}</p>
+                          <div className="flex items-baseline gap-2 mt-1">
+                            <p className="text-xl font-bold">{typeof score === 'number' ? score.toFixed(3) : 'N/A'}</p>
+                            {typeof score === 'number' && (
+                              <div className="h-2 flex-1 bg-gray-500 rounded overflow-hidden">
+                                <div
+                                  className={`h-full ${
+                                    score >= 0.6 ? 'bg-red-500' :
+                                    score >= 0.35 ? 'bg-yellow-500' :
+                                    'bg-green-500'
+                                  }`}
+                                  style={{ width: `${score * 100}%` }}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Fraud Score Bar */}
+                <div className="bg-slate-700 p-4 rounded border-2 border-orange-600">
+                  <h3 className="text-orange-400 font-bold mb-3">🚨 Final Fraud Score</h3>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-white font-semibold">{selectedTransaction.fraud_score?.toFixed(4) || 'N/A'}</span>
+                      <span className="text-gray-400 text-sm">
+                        Threshold: {selectedTransaction.status === 'blocked' ? '≥0.60' :
+                                   selectedTransaction.status === 'review' ? '0.35-0.60' :
+                                   '<0.35'}
+                      </span>
+                    </div>
+                    <div className="h-4 bg-gray-600 rounded overflow-hidden">
+                      <div
+                        className={`h-full transition-all ${
+                          selectedTransaction.fraud_score >= 0.6 ? 'bg-red-500' :
+                          selectedTransaction.fraud_score >= 0.35 ? 'bg-yellow-500' :
+                          'bg-green-500'
+                        }`}
+                        style={{ width: `${(selectedTransaction.fraud_score || 0) * 100}%` }}
+                      />
+                    </div>
+                  </div>
                 </div>
 
+                {/* Detected Patterns */}
                 {selectedTransaction.patterns && selectedTransaction.patterns.length > 0 && (
                   <div className="bg-slate-700 p-4 rounded border border-yellow-600">
-                    <h3 className="text-yellow-400 font-bold mb-2">⚠️ Detected Patterns</h3>
-                    <ul className="space-y-1">
+                    <h3 className="text-yellow-400 font-bold mb-3">⚠️ Detected Fraud Patterns</h3>
+                    <ul className="space-y-2">
                       {selectedTransaction.patterns.map((pattern, idx) => (
-                        <li key={idx} className="text-gray-300 text-sm">
-                          • {pattern}
+                        <li key={idx} className="bg-slate-600 p-3 rounded border-l-2 border-yellow-500">
+                          <p className="text-yellow-200 font-semibold">{pattern}</p>
                         </li>
                       ))}
                     </ul>
                   </div>
                 )}
 
-                <div className={`p-4 rounded font-bold text-center ${
-                  selectedTransaction.status === 'approved' ? 'bg-green-900 text-green-200 border border-green-700' :
-                  selectedTransaction.status === 'blocked' ? 'bg-red-900 text-red-200 border border-red-700' :
-                  selectedTransaction.status === 'review' ? 'bg-yellow-900 text-yellow-200 border border-yellow-700' :
-                  'bg-gray-700 text-gray-200'
+                {/* AI Explanation */}
+                <div className="bg-slate-700 p-4 rounded border border-blue-600">
+                  <h3 className="text-blue-400 font-bold mb-3">💬 AI Analysis (Groq)</h3>
+                  <p className="text-gray-200 leading-relaxed text-sm">
+                    {selectedTransaction.explanation || 'No explanation available'}
+                  </p>
+                </div>
+
+                {/* Status */}
+                <div className={`p-4 rounded font-bold text-lg text-center border-2 ${
+                  selectedTransaction.status === 'approved' ? 'bg-green-900 text-green-200 border-green-700' :
+                  selectedTransaction.status === 'blocked' ? 'bg-red-900 text-red-200 border-red-700' :
+                  selectedTransaction.status === 'review' ? 'bg-yellow-900 text-yellow-200 border-yellow-700' :
+                  'bg-gray-700 text-gray-200 border-gray-600'
                 }`}>
-                  Status: {selectedTransaction.status.toUpperCase()}
+                  STATUS: {selectedTransaction.status?.toUpperCase() || 'UNKNOWN'}
                 </div>
               </div>
             </div>

@@ -25,10 +25,10 @@ class Settings(BaseSettings):
     api_version: str = "1.0.0"
     api_description: str = "Real-time fraud detection system for banking transactions"
 
-    # Fraud scoring thresholds
-    fraud_threshold_approved: float = 0.4
-    fraud_threshold_review: float = 0.7
-    fraud_threshold_blocked: float = 1.0
+    # Fraud scoring thresholds (для демонстрации)
+    fraud_threshold_approved: float = 0.35  # < 35% = APPROVED
+    fraud_threshold_review: float = 0.60    # 35%-60% = REVIEW
+    fraud_threshold_blocked: float = 0.60   # >= 60% = BLOCKED
 
     # Model paths
     model_xgboost_path: str = "data/models/xgboost_model.joblib"
